@@ -235,14 +235,35 @@ NS_ASSUME_NONNULL_END
 }
 
 - (void)didCloseConnection:(CRConnection*)connection {
-    CRServer * __weak server = self;
-    if ( [self.delegate respondsToSelector:@selector(server:didCloseConnection:)]) {
-        dispatch_async(self.delegateQueue, ^{
-            [server.delegate server:server didCloseConnection:connection];
+    CRServer * __strong server = self;
+    if (!server) {
+        NSLog(@"CRServer is nil, aborting didCloseConnection");
+        return;
+    }
+    if (!connection) {
+        NSLog(@"Connection is nil, aborting didCloseConnection");
+        return;
+    }
+
+    id<CRServerDelegate> delegate = server.delegate;
+    if (delegate && [delegate respondsToSelector:@selector(server:didCloseConnection:)]) {
+        dispatch_queue_t delegateQueue = server.delegateQueue ?: dispatch_get_main_queue();
+        dispatch_async(delegateQueue, ^{
+            if (server && delegate) {
+                [delegate server:server didCloseConnection:connection];
+            } else {
+                NSLog(@"Server or delegate is nil in delegate callback");
+            }
         });
     }
-    dispatch_async(self.isolationQueue, ^(){
-        [server.connections removeObject:connection];
+
+    dispatch_queue_t isolationQueue = server.isolationQueue ?: dispatch_get_main_queue();
+    dispatch_async(isolationQueue, ^{
+        if (server.connections && [server.connections containsObject:connection]) {
+            [server.connections removeObject:connection];
+        } else {
+            NSLog(@"Connections is nil or connection not found");
+        }
     });
 }
 
